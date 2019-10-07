@@ -1,0 +1,113 @@
+<?php
+
+/* 
+ * @file
+ * A Custom Module to output Bookmobile stops list
+ * Lists the stops alphabetically and with the next stop time and date
+ */
+
+function bookmobile_stops_help($path, $arg) {
+    switch ($path) {
+        case "admin/help/#bookmobile_stops":
+            return '<p>'.t("Uses custom queries to pull Bookmobile stop data, to be displayed in an alphabetical list.").'</p>';
+            break;
+    }
+}
+
+function bookmobile_stops_menu() {
+	$items['bookmobile-stops'] = array(
+		'title callback' => 'Bookmobile Stops',
+		'page callback' => 'bookmobile_stops_handler',
+		'access callback' => TRUE,
+		'type' => MENU_CALLBACK,
+	);
+
+	return $items;
+}
+
+function bookmobile_stops_theme() {
+	return array(
+		'bookmobile_stops_template' => array(
+			'variables' => array(
+				'stops' => null,
+			),
+			'template' => 'bookmobile--stops',
+		),
+	);
+}
+
+function bookmobile_stops_handler() {
+	//get all the active stops
+	//Aberdeen Gardens 	333 Dundurn St S
+	$result = db_query("DB QUERY TO GET ALL STOPS");
+
+	//get each stops next stop time from now
+	$result2 = db_query("DB QUERY TO GET ALL STOPS NEXT SCHEDULED TIME");
+
+
+	//process stop data
+	$locations = array();
+	if($result->rowCount() != 0) {
+	    while($location = $result->fetchAssoc()) {
+	    	if(array_key_exists($location['title'],$locations)) {
+	    		//append nid to existing array item
+	    		array_push($locations[$location['title']]['nids'], $location['nid']);
+
+	    	} else {
+	    		//create the array entry
+	    		$locations[$location['title']] = array('street'=>$location['street'],'nids'=>array($location['nid']));
+	    	}
+	    }
+	} else {
+		return theme('bookmobile_stops_template',array('stops' => false));
+	}
+
+
+    //process schedule data
+    $schedules = array();
+    if($result2->rowCount() != 0) {
+	    while($schedule = $result2->fetchAssoc()) {
+	    	watchdog('bookmobile schedule query','<pre>'.print_r($schedule, true).'</pre>');
+			//create the array entry
+			$schedules[$schedule['entity_id']] = array('stopStart'=>$schedule['field_bm_schedule_value'],'stopEnd'=>$schedule['field_bm_schedule_value2']);
+	    }
+	} else {
+		return theme('bookmobile_stops_template',array('stops' => false));	
+	}
+
+
+	//combine db results into one array
+	$stops = array();
+	foreach($locations as $key => $value) {
+		//determine the next stop time if there ae multiple or single stops
+		$startDate = $stopDate = '';
+		//if there are multiple stops with the same name, because they happen on different days
+		if(count($value['nids']) >= 2) { 
+			//loop through the nids and get the start time for the stops
+			foreach($value['nids'] as $nid) { 
+				if($startDate == '') { 
+					$startDate = $schedules[$nid]['stopStart']; //set our base next stop time
+					$stopDate = $schedules[$nid]['stopEnd'];
+				} else {
+					if($schedules[$nid]['stopStart'] < $curDate) { //if the new stop, begins before the old one, use this one
+						$startDate = $schedules[$nid]['stopStart'];
+						$stopDate = $schedules[$nid]['stopEnd'];
+					}
+				}
+			}
+		} else {
+			//if there are only one stop times, use that one
+			$startDate = $schedules[$value['nids'][0]]['stopStart'];
+			$stopDate = $schedules[$value['nids'][0]]['stopEnd'];
+		}
+
+		if(array_key_exists(trim($key), $stops)){
+			continue;
+		} else {
+			$stops[trim($key)] = array('street'=>$value['street'],'stopStart'=>$startDate,'stopEnd'=>$stopDate);
+		}
+	}
+
+	//return 'error no data available.';
+	return theme('bookmobile_stops_template',array('stops' => $stops));
+}

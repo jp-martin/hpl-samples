@@ -1,0 +1,6 @@
+name = HPL DML Booking
+description = Content type permission changes, form element removal, and form verification
+core = 7.x
+version = 7.x-1.0
+project = hpl_booking
+files[] = hpl_booking.module

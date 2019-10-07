@@ -1,0 +1,3 @@
+name = Bookmobile All Stops list
+description = Provides a view of All the Bookmobile stops with the next stop times, sorted alphabetically.
+core = 7.x

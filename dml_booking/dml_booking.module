@@ -1,0 +1,516 @@
+<?php 
+
+/*=====================================================================================
+				DML RESERVATIONS 
+=====================================================================================*/
+function dml_booking_form_dml_reservation_node_form_alter(&$form, &$form_state, $form_id) {
+
+    if (isset($form_state['node']->field_makerspace_location) && !isset($form_state['values']['field_makerspace_location'])) {
+      $res_selected_location = $form_state['node']->field_makerspace_location;
+    } else {
+      $res_selected_location = isset($form_state['values']['field_makerspace_location']) ? $form_state['values']['field_makerspace_location'] : false;
+    }
+    
+    $form['field_makerspace_location'][$form['field_makerspace_location']['#language']]['#ajax'] = array(
+      'callback' => 'dml_booking_reservation_equipment_filter',
+      'wrapper' => 'dml-reservation-equipment-replace',
+      'progress' => array(
+          'type' => 'throbber',
+          'message' => t('Loading...'),
+        ),
+    );
+
+	$form['field_equipment'][$form['field_equipment']['#language']]['#prefix'] = '<div id="dml-reservation-equipment-replace">';
+    $form['field_equipment'][$form['field_equipment']['#language']]['#suffix'] = '</div>';
+    $form['field_equipment'][$form['field_equipment']['#language']]['#options'] = dml_booking_equipment_options($res_selected_location, 'Reservation', null);
+
+    return $form;
+}
+
+function dml_booking_reservation_equipment_filter($form, &$form_state) {
+	return $form['field_equipment'];
+}
+
+
+/*=====================================================================================
+				DML BOOKINGS 
+=====================================================================================*/
+function dml_booking_form_dml_bookings_node_form_alter(&$form, &$form_state, $form_id) {
+		
+	// ******************** DML BOOKING FORM ******************************* //
+	if(!user_access('access administration menu')) { //NOT LOGGED IN
+		//Hide fields from non-staff users
+		$form['additional_settings']['#access'] = false;
+		$form['field_booking_type']['#access'] = false;
+		$form['body']['#access'] = false;
+		$form['title']['#access'] = false;
+		$form['field_approval']['#access'] = false;
+	} else {
+		$node = $form_state['node'];
+		if(!isset($node->nid) || isset($node->is_new)) { //only modify when creating content, not when editing
+			$form['field_reservation_time']['und'][0]['#default_value']['value'] = date('Y-m-d H:i:s');
+			$form['field_reservation_time']['und'][0]['#default_value']['value2'] = date('Y-m-d H:i:s',strtotime('+2 hours',strtotime(date('Y-m-d H:i:s'))));
+		} else { //node is being edited
+			$tmpBarcode = trim(strip_tags($form['field_customer_barcode']['und'][0]['value']['#default_value']));
+			//dsm($form);
+			$result = db_query ("DB QUERY TO LOOK FOR WEBFORM SUBMISSIONS");
+			if ($result->rowCount() < 1) {
+				drupal_set_message('Notice: Customer has not completed the DML Waiver!');
+			}
+		}
+	}
+
+	//======================================================================================
+	//SET DEFAULT VALUES
+	if (isset($form_state['node']->field_what_would_you_like_to_do_) && !isset($form_state['values']['field_what_would_you_like_to_do_'])) {
+      $selected_action = $form_state['node']->field_what_would_you_like_to_do_;
+    } else {
+      $selected_action = isset($form_state['values']['field_what_would_you_like_to_do_']) ? $form_state['values']['field_what_would_you_like_to_do_'] : false;
+    }
+
+    if (isset($form_state['node']->field_makerspace_location) && !isset($form_state['values']['field_makerspace_location'])) {
+      $selected_location = $form_state['node']->field_makerspace_location;
+    } else {
+      $selected_location = isset($form_state['values']['field_makerspace_location']) ? $form_state['values']['field_makerspace_location'] : false;
+    }
+
+    if (isset($form_state['node']->field_equipment) && !isset($form_state['values']['field_equipment'])) {
+      $selected_equipment = $form_state['node']->field_equipment;
+    } else {
+      $selected_equipment = isset($form_state['values']['field_equipment']) ? $form_state['values']['field_equipment'] : false;
+    }
+
+    /*if (isset($form_state['node']->field_reservation_time) && !isset($form_state['values']['field_reservation_time'])) {
+      $selected_time = $form_state['node']->field_reservation_time;
+    } else {
+      $selected_time = isset($form_state['values']['field_reservation_time']) ? $form_state['values']['field_reservation_time'] : false;
+    }*/
+
+    //Change Equipment from multi-select and force it to be single select
+    $form['field_equipment'][$form['field_equipment']['#language']]['#multiple'] = 0;
+    $form['field_makerspace_location'][$form['field_makerspace_location']['#language']]['#multiple'] = 0;
+    //watchdog('$location_ids','<pre>'.print_r($form['field_equipment'], true).'</pre>');
+
+    //=======================================================================================
+
+	
+	//Add Callbacks and Ajax elements for replacing dropdowns
+	//---------------------------------------------------------------------------------------
+
+    //Add the callback to the what would you like to do select so it filters out the locations
+    $form['field_what_would_you_like_to_do_'][$form['field_what_would_you_like_to_do_']['#language']]['#ajax'] = array(
+      'callback' => 'dml_booking_location_filter',
+      'wrapper' => 'dml-location-replace',
+      'progress' => array(
+          'type' => 'throbber',
+          'message' => t('Loading...'),
+        ),
+    );
+
+    //Add the replace wrapper to the location dropdown
+    $form['field_makerspace_location'][$form['field_makerspace_location']['#language']]['#options'] = dml_booking_location_options($selected_action, $form['field_what_would_you_like_to_do_']['#language']);
+    $form['field_makerspace_location'][$form['field_makerspace_location']['#language']]['#prefix'] = '<div id="dml-location-replace">';
+    $form['field_makerspace_location'][$form['field_makerspace_location']['#language']]['#suffix'] = '</div>';
+    $form['field_makerspace_location'][$form['field_makerspace_location']['#language']]['#ajax'] = array(
+      'callback' => 'dml_booking_equipment_filter',
+      'wrapper' => 'dml-equipment-replace',
+      'progress' => array(
+          'type' => 'throbber',
+          'message' => t('Loading...'),
+        ),
+    );
+
+    //Add replace wrapper to equipment dropdown
+    $form['field_equipment'][$form['field_equipment']['#language']]['#options'] = dml_booking_equipment_options($selected_location, $form['field_makerspace_location']['#language'], $selected_action);
+    $form['field_equipment'][$form['field_equipment']['#language']]['#prefix'] = '<div id="dml-equipment-replace">';
+    $form['field_equipment'][$form['field_equipment']['#language']]['#suffix'] = '</div>';
+    $form['field_equipment'][$form['field_equipment']['#language']]['#ajax'] = array(
+      'callback' => 'dml_booking_reservation_time_adjuster',
+      'wrapper' => 'dml-reservation-time-replace',
+      'progress' => array(
+          'type' => 'throbber',
+          'message' => t('Loading...'),
+        ),
+    );
+
+    //Add replace wrapper to time field
+    //watchdog('dml_booking','<pre>'.print_r($form['field_reservation_time'], true).'</pre>');
+    $form['field_reservation_time'][$form['field_reservation_time']['#language']]['#prefix'] = '<div id="dml-reservation-time-replace">';
+    $form['field_reservation_time'][$form['field_reservation_time']['#language']]['#suffix'] = '</div>';
+
+    //----------------------------------------------------------------------------------------
+	//END ADD CALLBACKS
+	
+	$form['title']['#description'] = t('If you are entering a booking for a customer, use their barcode as the title. However if it is a Book a librarian event use that as the title.');
+	$form['#validate'][] = 'dml_booking_form_validate';
+
+	return $form;
+}
+
+
+/**************************************************************************************
+*						ALTER FUNCTIONS
+**************************************************************************************/
+
+function dml_booking_location_filter($form, &$form_state) {
+	/*return array(
+		'#type' => 'ajax',
+		'#commands' => array(
+			ajax_command_replace('#dml-location-replace', render($form['field_makerspace_location']))
+		)
+	);*/
+	return $form['field_makerspace_location'];
+}
+
+function dml_booking_equipment_filter($form, &$form_state) {
+	/*return array(
+		'#type' => 'ajax',
+		'#commands' => array(
+			ajax_command_replace('#dml-equipment-replace', render($form['field_equipment']))
+		)
+	);*/
+	return $form['field_equipment'];
+}
+
+function dml_booking_location_options($key, $lang) {
+	if($key) {
+
+		$todoid = $key['und'][0]['nid'];
+
+		//Rebuild/Filter Location dropdown based on What you want to do drop down selection
+		$result = db_query("GET MAKERSPACE LOCATIONS");
+	} else {
+		//Populate the default options
+		$result = db_query("GET MAKERSPACE LOCATIONS");
+	}
+    
+    $location_ids = array();
+    while($item = $result->fetchAssoc()) {
+    	$location_ids += array($item['nid'] => t($item['title']));
+    	//watchdog('$item','<pre>'.print_r($item, true).'</pre>');	
+    }
+
+    //watchdog('$location_ids','<pre>'.print_r($location_ids, true).'</pre>');
+
+	return array('_none' => "Select a Location") + $location_ids;
+}
+
+function dml_booking_equipment_options($key, $lang, $actionkey) {
+	if($key && $actionkey['und'][0]['nid'] != '') {
+		//watchdog('$actionkey','<pre>'.print_r($actionkey, true).'</pre>');
+		$locationid = $key['und'][0]['nid'];
+		$actionid = $actionkey['und'][0]['nid'];
+		//rebuild/filter equipment dropdown based on what you want to do and location
+		$result = db_query("GET EQUIPMENT LIST BASED ON WHAT YOU WANT TO DO AND LOCATION SELECTED");
+	} else if($key) {
+
+		$locationid = $key['und'][0]['nid'];
+
+		//Rebuild/Filter equipment dropdown based on location selection
+		$result = db_query("GET EQUIPMENT AVAILABLE BASED ON LOCATION");
+	} else {
+		//Populate the default options
+		$result = db_query("GET ALL OF THE EQUIPMENT AVAILABLE");
+	}
+
+	$equipment_ids = array_reduce($result->fetchAll(), function($result, $item) {
+      $result[$item->nid] = $item->title;
+      return $result;
+    }, array());
+
+	if($lang == 'Reservation') {
+		return $equipment_ids;
+	} else {
+		return array('_none' => "Select Equipment") + $equipment_ids;
+	}
+	
+}
+
+function dml_booking_reservation_time_adjuster($form, &$form_state) {
+	//Set the end time to be the duration based on equipment selected
+	$result = db_query("GET THE BOOKING DURATION FOR A THE SELECTED EQUIPMENT");
+							//array(":equipmentid" => $form['field_equipment']['und'][0]['nid']));
+	//watchdog('dml_booking','formstate <pre>'.print_r($form_state['values'], true).'</pre>');
+	$row = $result->fetchAssoc();
+	if(!user_access('access administration menu')) { //NOT LOGGED IN
+		//start date and time is +12 hours from now
+		$tmpStartDay = date('Y-m-d H:i:s',strtotime('+12 hours',strtotime(date('Y-m-d H:i:s'))));
+		$tmpEndDay = date('Y-m-d H:i:s',strtotime('+14 hours',strtotime(date('Y-m-d H:i:s'))));
+	} else {
+		//start date and time is now, if current user is a logged in staff member
+		$tmpStartDay = date('Y-m-d H:i:s');
+		$tmpEndDay = date('Y-m-d H:i:s',strtotime('+2 hours',strtotime(date('Y-m-d H:i:s'))));
+	}
+	//$tmpStartDay = $form_state['field_reservation_time']['und'][0]['value']['date']['#value']." ".$form_state['field_reservation_time']['und'][0]['value']['time']['#value'];
+	//watchdog('$dml_booking','temp start <pre>'.print_r($tmpStartDay, true).'</pre>');
+	//watchdog('$dml_booking','formstate <pre>'.print_r($form_state, true).'</pre>');
+	$adjustedEndDate = date('Y-m-d H:i:s',strtotime('+'.$row['field_booking_duration_value'].' hours', strtotime($tmpStartDay)));
+	//watchdog('$dml_booking','adjendate <pre>'.print_r($adjustedEndDate, true).'</pre>');
+
+	$form['field_reservation_time']['und'][0]['value2']['date']['#value'] = date('m/d/Y',strtotime($adjustedEndDate));
+	$minutes = date('i',strtotime($adjustedEndDate));
+	
+	if($minutes%15 >=8) {
+		$roundedMinutes = $minutes + (15 - ($minutes % 15));
+		if($roundedMinutes == 60) { // if mintues round up to 60, change to 00 and increase time by 1 hour
+			$roundedMinutes = 0;
+			$adjustedEndDate = date('Y-m-d H:i:s',strtotime('+1 hour',strtotime($adjustedEndDate)));
+		}
+	} else {
+		$roundedMinutes = $minutes - ($minutes % 15);
+	}
+	if ($roundedMinutes == 0) { $roundedMinutes ='00'; }
+
+	$roundedTime = date('h',strtotime($adjustedEndDate)).':'.$roundedMinutes.''.date('a',strtotime($adjustedEndDate));
+	$form['field_reservation_time']['und'][0]['value2']['time']['#value'] = $roundedTime;
+
+	return $form['field_reservation_time'];
+}
+
+
+/**************************************************************************************
+*
+*				VALIDATION
+*
+*************************************************************************************/
+
+function dml_booking_form_validate($form, &$form_state) {
+	//------------------------------------------------------
+	//		 FIELD VALIDATION AND VALUE SETTING
+	//------------------------------------------------------
+
+	// Let's make sure values are in an acceptable range before we do database queries
+
+	// Keep track of errors 
+	$formerr = false;
+	
+	// Validate barcode
+	$barcode = $form_state['values']['field_customer_barcode']['und'][0]['value'];
+	$barerr = false;
+	if(strlen($barcode) < 14 || strlen($barcode) > 14) {
+		$barerr = true;
+	} else if (substr($barcode,0,6) != '220220' && substr($barcode,0,6) != '220221') {
+		$barerr = true;
+	}
+	if($barerr) {
+		form_set_error('field_customer_barcode','Please enter a valid barcode.');
+		$formerr = true;
+	}
+	
+	//Validate eMail address
+	if(!valid_email_address($form_state['values']['field_email']['und'][0]['value'])) {
+		form_set_error('field_email','A valid Email address is required. ');
+		$formerr = true;
+	}
+	
+	//-----------------------------------------------------------------
+	// Do checks that require database queries if there are no non-db errors
+
+	// Validate times
+	$bookdate = date('Y-m-d H:i:s',strtotime($form_state['values']['field_reservation_time']['und'][0]['value']));
+	$endbookdate = date('Y-m-d H:i:s',strtotime($form_state['values']['field_reservation_time']['und'][0]['value2']));
+	if($bookdate > date('Y-m-d H:i:s',strtotime('+1 week',time())) && !user_access('access administration menu')) {
+		form_set_error('field_reservation_time','You can only submit bookings up to one week in advance.');
+		$formerr = true;
+	} else {
+		//$bookymd = date('Y-m-d',$bookdate);
+		$bookymd = date('Y-m-d',strtotime($form_state['values']['field_reservation_time']['und'][0]['value']));
+		//watchdog('$bookymd','<pre>'.print_r($bookymd, true).'</pre>');
+		//check for system closures
+		$scReason = get_system_closure($bookymd);
+		if($scReason != '') {
+			form_set_error('field_reservaton_time','All locations are closed for '.$scReason);
+			$formerr = true;
+		} else {
+			//check that booking is during open hours for the branch selected
+			//watchdog('dml_booking','<pre>'.print_r($form_state['values']['field_makerspace_location']['und'][0]['nid'], true).'</pre>');
+			$branchtimes = get_branch_open_times($form_state['values']['field_makerspace_location']['und'][0]['nid'],date('N',strtotime($form_state['values']['field_reservation_time']['und'][0]['value'])), date('m',strtotime($form_state['values']['field_reservation_time']['und'][0]['value'])));
+			//watchdog('dml_booking','<pre>'.print_r($branchtimes, true).'</pre>');
+			if($branchtimes[0] == 'closed') {
+				form_set_error('field_reservation_time','That location is not open on that day.');
+				$formerr = true;
+			} else {
+				$opentime = $bookymd . ' ' . $branchtimes[0]; 
+				$closetime = $bookymd . ' ' . $branchtimes[1];
+				//print 'opentime => '.$opentime.'<br />Bookdate => '.$bookdate.'<br />closetime => '.$closetime;
+				if ($bookdate < $opentime || $bookdate > $closetime || $endbookdate > $closetime) {
+					form_set_error('field_reservation_time','Please select a time during our open hours.');
+					$formerr = true;
+				} else if(strtotime($bookdate) < strtotime('+12 hours',time()) && !user_access('access administration menu')) {
+					form_set_error('field_reservation_time','If you need a booking within 12 hours please call the branch to book.');
+					$formerr = true;
+				} else {
+					//If the user is a staff member, skip the automatically setting of the end time.
+					if(!user_access('access administration menu')) {
+						//If no errors set end time to booking duration # of hours after start time.
+
+						$endbookdate = cap_end_time($bookdate, $endbookdate, $form_state['values']['field_equipment']['und'][0]['nid']);
+
+						$form['field_reservation_time']['#parents'] = array('field_reservation_time');
+						form_set_value($form['field_reservation_time'],array('und' => array(0 => array('value' => $bookdate, 'value2' => $endbookdate))),$form_state);
+					}
+				}
+			}
+		}
+	}
+
+	//If this booking is from a staff member ignore booking counts
+	if(!$formerr && !form_get_errors() && !user_access('access administration menu')) {
+		// Look to see if the customer already has 3 bookings this week
+		// Determine the timestamps for the start and end of the selected week
+		if(date('w',$bookymd) == 1) { //if today is monday
+			$startweek = date('Y-m-d H:i:s',strtotime($bookymd));
+		} else {
+			$startweek = date('Y-m-d H:i:s',strtotime('last Monday', $bookymd));
+		}
+		$endweek = date('Y-m-d H:i:s',strtotime('next Monday', $bookymd));
+		
+		$result = db_query("GET THE NUMBER OF BOOKINGS THIS CUSTOMER HAS FOR THE CURRENT WEEK");
+						//array(":barcode" => $barcode, ":startweek" => $startweek, ":endweek" => $endweek));
+
+		if($result->rowCount() >= 3) {
+			form_set_error('field_reservation_time','You can only have three bookings per week.');
+			$formerr = true;
+		}
+		while($reservation = $result->fetch()) {
+			if(strtotime($bookdate) >= strtotime(date("Y-m-d",$reservation->field_reservation_time_value)) && $bookdate <= strtotime("+1 day",date("Y-m-d",$reservation->field_reservation_time_value2))) {
+				//They alread have a booking that day
+				form_set_error('field_reservation_time','You can only have one booking per day.');
+				$formerr = true;
+				break;
+			}
+		}
+	}
+	
+	// Check for another booking at the same time and location
+	if(!$formerr && !form_get_errors() &&  arg(2) == 'dml-bookings') { 
+		//arg(2) will hopefully prevent error checking on the edit page by an admin
+		$loc = $form_state['values']['field_makerspace_location']['und'][0]['nid']; //Selected location
+		$equip = $form_state['values']['field_equipment']['und'][0]['nid']; //Selected Equipment
+
+		//FIND IF THERE ARE ANY OTHER BOOKINGS AT THE SAME TIME
+		$result2 = db_query("FIND OTHER BOOKINGS THE SAME TIME");
+		
+		$item = $result2->fetch();
+		$concurrentBookingError = false;
+		/*watchdog(':equip_id','<pre>'.print_r($equip, true).'</pre>');*/
+
+		if($item->field__concurrent_bookings_value > 1) {
+			//If there can be more than 1 bookings at a time do some extra checks to see if existings bookings overlap
+			mysqli_data_seek($result2, 0); //reset the pointer to the start before we loop through the data
+
+			$bookingcount = $result2->rowCount();
+			$bookinglimit = $item->field__concurrent_bookings_value;
+
+			//Loop through the bookings and compare the first end time against the start time of all subsequent bookings
+			//if any booking starts after the end time of the previous booking, reduce the booking count by one and
+			//skip to the next booking in the list. Continue through the rest of the bookigns doing the same until the end
+			//of the booking list is reached. Compare the reduced booking count agains the limit and allow the booking
+			//if the count is lower. This is done to accomodate bookings that can use the same equipment for the timeframe
+			//and not be considered using multiple pieces of equipment.
+			$arBookings = array();
+			while($booking = $result2->fetch()){
+				$arBookings[] = array('startTime'=>$booking->field_reservation_time_value,'endTime'=>$booking->field_reservation_time_value2);
+			}
+
+			$looplimit = $bookingcount-1;
+			for($i=0;$i<=$looplimit;$i++) {
+				for($y=$i+1;$y<=$looplimit;$y++) {
+					if($arBookings[$i]['endTime'] <= $arBookings[$y]['startTime']) {
+						$bookingcount--;
+						break;
+					}
+				}
+			}
+
+			if($bookingcount >= $bookinglimit) {
+				$concurrentBookingError = true;
+			}
+
+		} else {
+			//CHeck if this booking puts the limit over the concurrent booking count
+			if(is_object($item) && $result2->rowCount() >= $item->field__concurrent_bookings_value) {
+				$concurrentBookingError = true;
+			}
+		}
+
+		if($concurrentBookingError) {
+			form_set_error('field_equipment','Sorry there is already the maximum bookings for this equipment,');
+			form_set_error('field_reservation_time','at this time. Please select a new time or day.');
+			$formerr = true;
+		}
+
+		if(!$formerr && !form_get_errors()) {
+			//FIND IF THERE ARE ANY RESERVATIONS FOR THAT EQUIPMENT
+			$result3 = db_query("FIND IF THERE ARE OTHER RESERVATIONS AT THE SAME TIME");
+
+			$reservation = $result3->fetch();
+			if($result3->rowCount() >= 1) {
+				form_set_error('field_equipment','Sorry there is a reservation for this equipment for: '.$reservation->body_value.',');
+				form_set_error('field_reservation_time','at this time. Please select a new time, day, or equipment.');
+				$formerr = true;
+			}
+		}
+	}
+	
+	//IF THERE ARE NO ERRORS, SET FIELD VALUES FOR FIELD THAT ARE HIDDEN FROM NON-ADMIN USERS
+	if(!$formerr && !form_get_errors() && !user_access('access administration menu')) {
+		//Set the title field value for customers so it isn't blank
+		$form['title']['#parents'] = array('title');
+		form_set_value($form['title'],$barcode,$form_state);
+	}
+}
+
+function get_branch_open_times($branchid, $daynum, $monthnum) {
+	//watchdog('$branchid','<pre>'.print_r($branchid, true).'</pre>' );
+	if($daynum == 7) {
+		$daynum = 0; // change sunday to 0 to match db numbering
+	}
+	//if $monthnum is summer May - August then all locations are closed on sundays
+	//if($monthnum >= 5 && $monthnum < 9 && $daynum == 0) {
+	//	return array('closed','closed');
+	//}
+	/*
+	field_branch_open_hours_day field
+	0 = sunday
+	1 = monday
+	...
+	6 = saturday
+	24 hour times
+	*/
+
+	$result = db_query("GET THE OPEN HOURS FOR THE SELECTED MAKERSPACE LOCATION");
+	//print_r($result);
+	if($result->rowCount() == 0) {
+		return array('closed','closed');
+	} else {
+		$times = $result->fetchAssoc();
+		return array(substr_replace(str_pad($times['field_branch_open_hours_starthours'],4,'0', STR_PAD_LEFT),':',2,0).':00', substr_replace(str_pad($times['field_branch_open_hours_endhours'],4,'0',STR_PAD_LEFT),':',2,0).':00');
+	}
+}
+
+function get_system_closure($bookymd) {
+	//Look for system closures on the requested booking day
+	$result = db_query("CHECK IF THERE IS A SYSTEM CLOSURE ON THE SELECTED DAY");
+	if($result->rowCount() == 0) {
+		return '';
+	} else {
+		$row = $result->fetchAssoc();
+		return $row['title'];
+	}
+}
+
+function cap_end_time($startDate, $endDate, $equipID) {
+	//Make sure customers haven't entered a time longer than allowed.
+	$result = db_query("SET THE END TIME BASED ON THE EQUIPMENT SELECTED");
+
+	$row = $result->fetchAssoc();
+
+	$calcEndDate = date('Y-m-d H:i:s',strtotime('+'.$row['field_booking_duration_value'].' hours', strtotime($startDate)));
+
+	if($calcEndDate < $endDate) {
+		return $calcEndDate;
+	} else {
+		return $endDate;
+	}
+}

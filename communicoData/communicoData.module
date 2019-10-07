@@ -1,0 +1,133 @@
+<?php
+
+/* 
+ * @file
+ * A Custom Module to handle Bibliocommons data
+ * Functions for cron job hooks for pulling in the data
+ * and functions for formatting the pulled data to be used in a block display
+ */
+
+function communicoData_help($path, $arg) {
+    switch ($path) {
+        case "admin/help/#communicoData":
+            return '<p>'.t("Pulls JSON data from Communico using the cron_hook() interface. Will also generate content blocks from the Json data retrieved.").'</p>';
+            break;
+    }
+}
+
+function communicoData_preprocess_block(&$variables) {
+	if(arg(0) == 'events') {
+		$variables['theme_hook_suggestions'][] = 'sites/all/modules/custom/communicoData/theme/communicoData__events';
+	}
+}
+
+/*function communicoData_theme($existing,$type,$theme,$path) {
+	return array(
+		'communicoData' => array(
+			'variables' => array('content' => NULL),
+			'file' => 'communico-data-events', // place you file in 'theme' folder of you module folder
+			'path' => drupal_get_path('module', 'communicoData') .'/theme'
+		)
+	);
+}*/
+
+// INCLUDE FUNCTION FILES
+module_load_include('inc','communicoData','inc/communicoData.auth');
+
+module_load_include('inc','communicoData','inc/communicoData.cron');
+
+module_load_include('inc','communicoData','inc/communicoData.events'); 
+
+/* ----------------------------------------------------------------
+
+			DEFINE AND POPULATE BLOCK FUNCTIONS
+
+------------------------------------------------------------------*/
+
+//This function defines the blocks that will be created for use
+function communicoData_block_info() {
+	$blocks['communico_home_page_events'] = array(
+		'info' => t('Communico Homepage Events'),
+	);
+
+	return $blocks;
+}
+
+//This function defines the content that will be available to the blocks
+function communicoData_block_view($delta = '') {
+	$block = array();
+
+	switch($delta) {
+		case 'communico_home_page_events':
+			$block['subject'] = '';
+			$block['content'] = communicoData_get_frontpage_block_content();
+			break;
+	}
+	return $block;
+}
+
+function communicoData_get_frontpage_block_content() {
+	//Determine site variables
+	$urlArgs = explode('.',$_SERVER['HTTP_HOST']);
+	$subSite = $urlArgs[0];
+	$jsonFile = 'sites/default/files/jsondata/communico/events_'.$subSite.'-next_5.json';
+	//get the json data and format it and return the content as a string
+	//or return an empty string if the json file can't be parsed
+	if ($fh = file_get_contents($jsonFile)) {
+		$jsonData = json_decode($fh);
+		if(json_last_error() === JSON_ERROR_NONE) {
+			//No file error and no json error
+			//then process the json data
+			ob_start();
+			?>
+				<div id="block-views-events-communico-call-out-block" class="block block-views contextual-links-region events banner-box bg-white column width6 push0">
+				  <div class='flag'>
+				    <img alt="" class='icon' src="/sites/all/themes/hpl_primary/images/icon_calendar.png" />
+				  </div>
+				  
+				  <h2>Events Calendar</h2>
+
+				  <div class="content">
+				  	<div class="view view-events-communico-call-out view-id-events_communico_call_out view-display-id-block">
+				  		<div class="view-content">
+				  			<div class="item-list">
+				  				<ul>
+					  				<?php
+				  					//loop through the json file and pull out the data from the records
+				  					foreach($jsonData->{'data'}->{'entries'} as $event) {
+				  						?>
+				  						<li>
+				  							<span class="title"><a href="//events.hpl.ca/event/<?php print $event->{'eventId'}; ?>" title="<?php print $event->{'title'}; ?> at <?php print $event->{'locationName'}; ?>"><?php print $event->{'title'}; ?></a></span> - 
+				  							<span class="field-content"><a href="/branches/<?php print strtolower(str_replace(" ","-",$event->{'locationName'})); ?>"><?php print $event->{'locationName'}; ?></a></span>
+				  							<div class="field-content">
+				  								<span class="date-display-single"><?php print date('l, F j, Y',strtotime($event->{'eventStart'})); ?> - <span class="date-display-range"><span class="date-display-start"><?php print date('g:ia',strtotime($event->{'eventStart'})); ?></span> to <span class="date-display-end"><?php print date('g:ia',strtotime($event->{'eventEnd'})); ?></span></span></span>
+				  							</div>
+				  						</li>
+				  					<?php }	?>
+				  				</ul>
+				  			</div>
+			  			</div>
+			  			<div class="more-link"><a href="//events.hpl.ca/events">View All Events</a></div>
+			  		</div>
+			  	  </div>
+
+				  <?php 
+				  if($subSite =='kids') {
+				    ?><img alt="" src='/sites/all/themes/hpl_kids/images/kids-wavy-callout-sm.png' class='kids-wavy-callout' /><?php
+				  }
+				  if($subSite =='teens') {
+				    ?><img alt="" src='/sites/all/themes/hpl_teens/images/teens-ripped-bottom.png' class='teens-ripped-callout' /><?php
+				  }
+				  ?>
+				</div>
+			<?php 
+			$blockOutput = ob_get_clean();
+
+			return $blockOutput;
+		} else {
+			return "";
+		}
+	} else {
+		return "";
+	}
+}

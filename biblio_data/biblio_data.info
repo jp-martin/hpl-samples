@@ -1,0 +1,3 @@
+name = Bibliocommons Data Handler
+description = Provides Data interface and cron job for Bibliocommons recently reviewed items.
+core = 7.x

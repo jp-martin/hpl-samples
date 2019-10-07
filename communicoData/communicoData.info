@@ -1,0 +1,3 @@
+name = Communico Data Handler
+description = Provides Data interface and cron job for the Communico API, and displays events using Communico API requests.
+core = 7.x

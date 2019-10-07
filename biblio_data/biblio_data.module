@@ -1,0 +1,42 @@
+<?php
+
+/* 
+ * @file
+ * A Custom Module to handle Bibliocommons data
+ * Functions for cron job hooks for pulling in the data
+ * and functions for formatting the pulled data to be used in a block display
+ */
+
+function biblio_data_help($path, $arg) {
+    switch ($path) {
+        case "admin/help/#biblio_data":
+            return '<p>'.t("Pulls JSON data from Bibliocommons using the cron_hook() interface").'</p>';
+            break;
+    }
+}
+
+function biblio_data_cron() {
+    //PRIMARY
+	//https://api.bibliocommons.com/v1/titles?library=hpl&search_type=subject&search_category=subject&q=adults&api_key=
+    //$jsondata = file_get_contents('https://api.bibliocommons.com/v1/user_content?library=hpl&content_type=comment&page=1&metadata=0&date_format=iso8601&locale=en-US&api_key=pesegg2ven4y49qetrzqrw5g');
+	$jsondata = file_get_contents('https://api.bibliocommons.com/v1/lists/425996707_adult_titles?api_key=');
+    
+    if($jsondata) {
+    	//file_get_contents returns false on failure, so if there is a failure, don't override the json files
+    	file_put_contents('sites/default/files/jsondata/recently_reviewed.json', $jsondata);
+    }
+	sleep(1);
+	//TEENS
+	$jsondata = file_get_contents('https://api.bibliocommons.com/v1/lists/385739867_teen_titles?api_key=');
+	
+	if($jsondata) {
+		file_put_contents('sites/default/files/jsondata/teens.json',$jsondata);
+	}
+	sleep(1);
+	//KIDS
+	$jsondata = file_get_contents('https://api.bibliocommons.com/v1/lists/385736437_childrens_titles?api_key=');
+	
+	if($jsondata) {
+		file_put_contents('sites/default/files/jsondata/kids.json',$jsondata);
+	}
+}
